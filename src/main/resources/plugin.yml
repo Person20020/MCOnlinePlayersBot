@@ -1,0 +1,7 @@
+name: MCOnlinePlayersBot
+version: '${project.version}'
+main: com.github.person20020.mconlineplayersbot.MCOnlinePlayersBot
+api-version: '1.21'
+softdepend:
+  - Vault
+  - Essentials

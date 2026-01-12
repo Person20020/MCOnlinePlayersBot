@@ -1,0 +1,20 @@
+# Discord
+discord_app_id: 0 # Replace this
+discord_token: replace_me # Replace this
+discord_public_key: replace_me # Replace this
+discord_channel_id: 0 # Replace this
+discord_guild_id: 0 # Replace this
+
+# Config
+debug: false # Include debug logs
+player_check_interval: 300 # In seconds. The interval at which to manually check online players.
+  # The plugin also updates on player join events.
+
+# Prefix Colors
+# Options:
+# GRAY, RED, YELLOW, ORANGE, BLUE, PINK, CYAN, WHITE
+# Format:
+# prefix_colors:
+#   prefix: COLOR
+prefix_colors:
+  - '[AFK]': GRAY
