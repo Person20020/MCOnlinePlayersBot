@@ -51,11 +51,8 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
     private boolean debug = false;
     private Essentials ess = null;
 
-    long DISCORD_APP_ID = 0;
     String DISCORD_TOKEN = "";
-    String DISCORD_PUBLIC_KEY = "";
     long DISCORD_CHANNEL_ID = 0;
-    long DISCORD_GUILD_ID = 0;
     int PLAYER_CHECK_INTERVAL;
 
     @Override
@@ -65,23 +62,18 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
         config = getConfig();
 
         // Discord bot info
-        DISCORD_APP_ID = config.getLong("discord_app_id");
         DISCORD_TOKEN = config.getString("discord_token");
-        DISCORD_PUBLIC_KEY = config.getString("discord_public_key");
         DISCORD_CHANNEL_ID = config.getLong("discord_channel_id");
-        DISCORD_GUILD_ID = config.getLong("discord_guild_id");
 
         // Check that Discord bot info is set
         if (
-                DISCORD_APP_ID == 0 ||
                 DISCORD_TOKEN.equals("replace_me") ||
-                DISCORD_PUBLIC_KEY.equals("replace_me") ||
-                DISCORD_CHANNEL_ID == 0 ||
-                DISCORD_GUILD_ID == 0
+                DISCORD_CHANNEL_ID == 0
         ) {
-            getLogger().severe("Some Discord configuration is still set to default. " +
-                    "This plugin will not run until they are updated.");
+            getLogger().severe(Styles.RED + "Some Discord configuration is still set to default. " +
+                    "This plugin will not run until they are updated." + Styles.RESET);
             getServer().getPluginManager().disablePlugin(this);
+            return;
         }
 
         // Config
@@ -124,14 +116,12 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
     @Override
     public void onDisable() {
         // Plugin shutdown logic
-        discordBot.updateMessage("Bot offline.", DISCORD_CHANNEL_ID);
-        discordBot.stop();
+        if (discordBot != null) discordBot.stop();
 
         getLogger().info("MCOnlinePlayersBot plugin disabled.");
     }
 
     private boolean setupChat() {
-        // TODO: Make sure this is correct
         RegisteredServiceProvider<Chat> rsp = getServer().getServicesManager().getRegistration(Chat.class);
         if (rsp == null) return false;
         chat = rsp.getProvider();
@@ -313,6 +303,7 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                         if (player.get("is_afk").getAsBoolean()) {
                             if (config.isSet("prefix_colors")) {
                                 Styles colorCode = getPrefixColor("[AFK]");
+                                if (colorCode == null) colorCode = Styles.WHITE;
                                 line += colorCode + "[AFK]" + Styles.RESET;
                             } else {
                                 line += Styles.GRAY + "[AFK]" + Styles.RESET;
@@ -320,7 +311,9 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                         } else {
                             String prefix = player.get("prefix").getAsString();
                             if (config.isSet("prefix_colors")) {
-                                line += getPrefixColor(prefix) + prefix + Styles.RESET;
+                                Styles colorCode = getPrefixColor(prefix);
+                                if (colorCode == null) colorCode = Styles.WHITE;
+                                line += colorCode + prefix + Styles.RESET;
                             } else {
                                 line += prefix;
                             }
@@ -337,7 +330,6 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
     }
 
     public void discordUpdatePlayerList() {
-        // TODO: Finish discord bot
         String message = generateMessageContent();
 
         // Update message
