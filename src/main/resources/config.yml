@@ -17,4 +17,4 @@ player_check_interval: 300 # In seconds. The interval at which to manually check
 # prefix_colors:
 #   prefix: COLOR
 prefix_colors:
-  - '[AFK]': GRAY
+#  - '[AFK]': GRAY

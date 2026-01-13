@@ -8,10 +8,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.javacord.api.DiscordApi;
-import org.javacord.api.DiscordApiBuilder;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
@@ -19,10 +15,6 @@ import com.google.gson.JsonElement;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 public final class MCOnlinePlayersBot extends JavaPlugin {
 
@@ -51,6 +43,7 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
         }
     }
 
+    private DiscordBot discordBot;
 
     private FileConfiguration config;
     private boolean vaultEnabled = false;
@@ -58,11 +51,11 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
     private boolean debug = false;
     private Essentials ess = null;
 
-    int DISCORD_APP_ID = 0;
+    long DISCORD_APP_ID = 0;
     String DISCORD_TOKEN = "";
     String DISCORD_PUBLIC_KEY = "";
-    int DISCORD_CHANNEL_ID = 0;
-    int DISCORD_GUILD_ID = 0;
+    long DISCORD_CHANNEL_ID = 0;
+    long DISCORD_GUILD_ID = 0;
     int PLAYER_CHECK_INTERVAL;
 
     @Override
@@ -72,11 +65,11 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
         config = getConfig();
 
         // Discord bot info
-        DISCORD_APP_ID = config.getInt("discord_app_id");
+        DISCORD_APP_ID = config.getLong("discord_app_id");
         DISCORD_TOKEN = config.getString("discord_token");
         DISCORD_PUBLIC_KEY = config.getString("discord_public_key");
-        DISCORD_CHANNEL_ID = config.getInt("discord_channel_id");
-        DISCORD_GUILD_ID = config.getInt("discord_guild_id");
+        DISCORD_CHANNEL_ID = config.getLong("discord_channel_id");
+        DISCORD_GUILD_ID = config.getLong("discord_guild_id");
 
         // Check that Discord bot info is set
         if (
@@ -111,9 +104,14 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
             vaultEnabled = true;
         }
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
-        getServer().getPluginManager().registerEvents(new AFKListener(this), this);
+        if (ess != null) {
+            getServer().getPluginManager().registerEvents(new AFKListener(this), this);
+        }
 
-        // TODO: Create service to run discordUpdatePlayerList
+        // Connect Discord bot
+        discordBot = new DiscordBot(DISCORD_TOKEN, this);
+        discordBot.start();
+
         // Schedule manual check
         Bukkit.getScheduler().runTaskTimer(
                 this,
@@ -126,7 +124,8 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
     @Override
     public void onDisable() {
         // Plugin shutdown logic
-        // TODO: Kill discord bot ???
+        discordBot.updateMessage("Bot offline.", DISCORD_CHANNEL_ID);
+        discordBot.stop();
 
         getLogger().info("MCOnlinePlayersBot plugin disabled.");
     }
@@ -152,7 +151,6 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
             return null;
         }
 
-
         // Convert the color name to its corresponding enum value
         for (Styles color : Styles.values()) {
             if (color.name().equalsIgnoreCase(colorName)) {
@@ -163,7 +161,7 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
         return null;
     }
 
-    public JSONObject getPlayersJson() {
+    public JsonObject getPlayersJson() {
         // Get online players and info
         /*
             If Vault is not present, prefix, groups, primary_group, and suffix will all be empty.
@@ -198,11 +196,11 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
             }
          */
 
-        JSONArray players = new JSONArray();
+        JsonArray players = new JsonArray();
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            JSONObject player = new JSONObject();
-            player.put("username", p.getName());
+            JsonObject player = new JsonObject();
+            player.addProperty("username", p.getName());
 
             // Vault info
             if (vaultEnabled) {
@@ -215,20 +213,20 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                         getLogger().warning("could not get player prefix: " + e);
                     }
                 }
-                player.put("prefix", prefix == null ? "" : prefix);
+                player.addProperty("prefix", prefix == null ? "" : prefix);
 
                 // Groups
-                JSONArray groups = new JSONArray();
+                JsonArray groups = new JsonArray();
                 try {
                     for (String group : chat.getPlayerGroups(p)) {
-                        groups.put(group);
+                        groups.add(group);
                     }
                 } catch (Exception e) {
                     if (debug) {
                         getLogger().warning("Could not get player groups: " + e);
                     }
                 }
-                player.put("groups", groups);
+                player.add("groups", groups);
                 // Primary group
                 String primaryGroup = "";
                 try {
@@ -238,7 +236,7 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                         getLogger().warning("Could not get player primary group: " + e);
                     }
                 }
-                player.put("primary_group", primaryGroup);
+                player.addProperty("primary_group", primaryGroup);
 
                 // Suffix
                 String suffix = "";
@@ -249,7 +247,7 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                         getLogger().warning("Could not get player suffix:" + e);
                     }
                 }
-                player.put("suffix", suffix);
+                player.addProperty("suffix", suffix);
             }
 
             // AFK if essentials is enabled
@@ -257,22 +255,21 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
             if (ess != null) {
                 afk = ess.getUser(p).isAfk();
             }
-            player.put("is_afk", afk);
+            player.addProperty("is_afk", afk);
 
-            players.put(player);
+            players.add(player);
         }
 
-        JSONObject root = new JSONObject();
-        int playerCount = players.length();
-        root.put("players", players);
-        root.put("player_count", playerCount);
+        JsonObject root = new JsonObject();
+        root.add("players", players);
+        root.addProperty("player_count", players.size());
 
         return root;
     }
 
     public String generateMessageContent() {
         // Update player list
-        JSONObject playersJSON = new JSONObject(getPlayersJson());
+        JsonObject playersJSON = getPlayersJson();
 
         /*
         Format:
@@ -282,20 +279,20 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
             prefix (or [AFK] if is_afk) username
          */
 
-        JSONArray players = new JSONArray(playersJSON.getJSONArray("players"));
-        int playerCount = playersJSON.getInt("player_count");
+        JsonArray players = playersJSON.get("players").getAsJsonArray();
+        int playerCount = playersJSON.get("player_count").getAsInt();
 
 
         List<String> sections = new ArrayList<>();
-        sections.add("{BOLD}Current Players ({playerCount):{RESET}" + Styles.BOLD + "Current Players (" + playerCount + "):" + Styles.RESET);
+        sections.add(Styles.BOLD + "Current Players (" + playerCount + "):" + Styles.RESET);
         if (playerCount == 0) {
             sections.add("No players online.");
         } else {
             // Get unique primary groups
             List<String> uniquePrimaryGroups = new ArrayList<>();
-            for (int i = 0; i < players.length(); i++) {
-                JSONObject player = new JSONObject(players.get(i));
-                String primaryGroup = player.getString("primary_group");
+            for (JsonElement el : players) {
+                JsonObject player = el.getAsJsonObject();
+                String primaryGroup = player.get("primary_group").getAsString();
                 if (!uniquePrimaryGroups.contains(primaryGroup)) {
                     uniquePrimaryGroups.add(primaryGroup);
                 }
@@ -308,27 +305,27 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
 
                 // Generate lines
                 List<String> lines = new ArrayList<>();
-                lines.add(Styles.UNDERLINE + group + Styles.RESET);
-                for (int j = 0; j < playerCount; j++) {
-                    JSONObject player = new JSONObject(players.get(j));
-                    if (player.getString("primary_group").equals(group)) {
-                        String line = "";
-                        if (player.getBoolean("is_afk")) {
+                lines.add(Styles.UNDERLINE + group + ":" + Styles.RESET);
+                for (JsonElement el : players) {
+                    JsonObject player = el.getAsJsonObject();
+                    if (player.get("primary_group").getAsString().equals(group)) {
+                        String line = "- ";
+                        if (player.get("is_afk").getAsBoolean()) {
                             if (config.isSet("prefix_colors")) {
                                 Styles colorCode = getPrefixColor("[AFK]");
-                                line = colorCode + "[AFK]" + Styles.RESET;
+                                line += colorCode + "[AFK]" + Styles.RESET;
                             } else {
-                                line = Styles.GRAY + "[AFK]" + Styles.RESET;
+                                line += Styles.GRAY + "[AFK]" + Styles.RESET;
                             }
                         } else {
-                            String prefix = player.getString("prefix");
+                            String prefix = player.get("prefix").getAsString();
                             if (config.isSet("prefix_colors")) {
-                                line = getPrefixColor(prefix) + prefix + Styles.RESET;
+                                line += getPrefixColor(prefix) + prefix + Styles.RESET;
                             } else {
-                                line = prefix;
+                                line += prefix;
                             }
                         }
-                        line += player.getString("username");
+                        line += player.get("username").getAsString();
                         lines.add(line);
                     }
                 }
@@ -336,21 +333,16 @@ public final class MCOnlinePlayersBot extends JavaPlugin {
                 sections.add(String.join("\n", lines));
             }
         }
-        return "```ansi\n" + String.join("\n\n", sections) + "\n````";
+        return "```ansi\n" + String.join("\n\n", sections) + "\n```";
     }
 
     public void discordUpdatePlayerList() {
         // TODO: Finish discord bot
         String message = generateMessageContent();
-//        try {
-//            DiscordApi api = new DiscordApiBuilder()
-//                    .setToken(DISCORD_TOKEN)
-//                    .login().join();
-//            getLogger().info("Discord bot connected as: " + api.getYourself().getDiscriminatedName());
-//        } catch (Exception e) {
-//            getLogger().severe("Could not connect discord bot!");
-//        }
-        getServer().broadcastMessage(message);
+
+        // Update message
+        discordBot.updateMessage(message, DISCORD_CHANNEL_ID);
+
     }
 }
 
